@@ -1,0 +1,20 @@
+# Local cluster for development: 1 control-plane + 3 workers.
+# Labels simulate a heterogeneous cluster so scheduling decisions are visible.
+#   make cluster-up   /   make cluster-down
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: kairos
+nodes:
+  - role: control-plane
+  - role: worker
+    labels:
+      topology.kubernetes.io/zone: zone-a
+      kairos.io/tier: on-demand
+  - role: worker
+    labels:
+      topology.kubernetes.io/zone: zone-a
+      kairos.io/tier: spot
+  - role: worker
+    labels:
+      topology.kubernetes.io/zone: zone-b
+      kairos.io/tier: spot
