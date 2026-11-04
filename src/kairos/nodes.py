@@ -1,0 +1,78 @@
+"""Node selection: the "which node?" question, as pure functions (no API calls).
+
+Phase 1 keeps this deliberately dumb: any Ready, schedulable, untainted node is
+fine, and we pick one at random. Phase 2 replaces this with Filter/Score plugins.
+"""
+
+from __future__ import annotations
+
+import random
+from dataclasses import dataclass
+
+from kubernetes.client import V1Node
+
+# Taint effects that keep pods off a node unless the pod tolerates them.
+# Phase 1 has no toleration support yet, so such nodes are simply skipped
+# (this is what keeps pods off the kind control-plane node).
+BLOCKING_TAINT_EFFECTS = frozenset({"NoSchedule", "NoExecute"})
+
+
+@dataclass(frozen=True)
+class Rejection:
+    """Why a node was filtered out. Used for FailedScheduling messages."""
+
+    node: str
+    reason: str
+
+
+def node_name(node: V1Node) -> str:
+    if node.metadata is None or not node.metadata.name:
+        raise ValueError("node from the API has no name")
+    return node.metadata.name
+
+
+def is_ready(node: V1Node) -> bool:
+    """True if the node's `Ready` condition is `True` (kubelet is healthy)."""
+    conditions = node.status.conditions if node.status else None
+    return any(c.type == "Ready" and c.status == "True" for c in conditions or [])
+
+
+def rejection_reason(node: V1Node) -> str | None:
+    """Return why `node` can't take a pod, or None if it can."""
+    if not is_ready(node):
+        return "node(s) were not Ready"
+    if node.spec and node.spec.unschedulable:
+        return "node(s) were unschedulable"
+    for taint in (node.spec.taints if node.spec else None) or []:
+        if taint.effect in BLOCKING_TAINT_EFFECTS:
+            return f"node(s) had untolerated taint {{{taint.key}: {taint.effect}}}"
+    return None
+
+
+def filter_nodes(nodes: list[V1Node]) -> tuple[list[V1Node], list[Rejection]]:
+    """Split nodes into (feasible, rejected-with-reason)."""
+    feasible: list[V1Node] = []
+    rejected: list[Rejection] = []
+    for node in nodes:
+        reason = rejection_reason(node)
+        if reason is None:
+            feasible.append(node)
+        else:
+            rejected.append(Rejection(node=node_name(node), reason=reason))
+    return feasible, rejected
+
+
+def pick_node(feasible: list[V1Node], rng: random.Random | None = None) -> V1Node | None:
+    """Pick one feasible node at random, or None if there are none."""
+    if not feasible:
+        return None
+    return (rng or random).choice(feasible)
+
+
+def summarize_rejections(total: int, rejected: list[Rejection]) -> str:
+    """Build a kube-scheduler-style message: `0/4 nodes are available: 1 node ..., 3 ...`."""
+    counts: dict[str, int] = {}
+    for r in rejected:
+        counts[r.reason] = counts.get(r.reason, 0) + 1
+    parts = ", ".join(f"{n} {reason}" for reason, n in sorted(counts.items()))
+    return f"0/{total} nodes are available" + (f": {parts}." if parts else ".")

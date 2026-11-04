@@ -1,0 +1,24 @@
+# Six replicas scheduled by Kairos. Phase 1 picks nodes at random, so the spread varies:
+#   kubectl get pods -l app=kairos-web -o wide
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kairos-web
+spec:
+  replicas: 6
+  selector:
+    matchLabels:
+      app: kairos-web
+  template:
+    metadata:
+      labels:
+        app: kairos-web
+    spec:
+      schedulerName: kairos-scheduler
+      containers:
+        - name: web
+          image: nginx:1.27-alpine
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi

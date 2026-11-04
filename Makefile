@@ -1,6 +1,6 @@
 CLUSTER := kairos
 
-.PHONY: install lint test cluster-up cluster-down
+.PHONY: install lint test run cluster-up cluster-down
 
 install:        ## create venv and install dev deps
 	uv sync
@@ -10,6 +10,9 @@ lint:           ## lint + type-check
 
 test:           ## run unit tests
 	uv run pytest
+
+run:            ## run kairos locally against the current kube context
+	uv run kairos
 
 cluster-up:     ## local multi-node kind cluster
 	kind create cluster --config deploy/kind/cluster.yaml
