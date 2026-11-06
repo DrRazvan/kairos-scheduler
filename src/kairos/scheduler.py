@@ -103,7 +103,7 @@ class Scheduler:
         ref = PodRef.of(pod)
 
         nodes = self.api.list_node().items
-        feasible, rejected = filter_nodes(nodes)
+        feasible, rejected = filter_nodes(nodes, pod)
         node = pick_node(feasible)
 
         if node is None:

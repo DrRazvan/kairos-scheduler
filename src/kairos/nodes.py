@@ -1,7 +1,7 @@
 """Node selection: the "which node?" question, as pure functions (no API calls).
 
-Phase 1 keeps this deliberately dumb: any Ready, schedulable, untainted node is
-fine, and we pick one at random. Phase 2 replaces this with Filter/Score plugins.
+A node is feasible if it is Ready, schedulable, untainted, and matches the pod's
+nodeSelector. We pick one at random. Phase 2 replaces this with Filter/Score plugins.
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
-from kubernetes.client import V1Node
+from kubernetes.client import V1Node, V1Pod
 
 # Taint effects that keep pods off a node unless the pod tolerates them.
 # Phase 1 has no toleration support yet, so such nodes are simply skipped
@@ -37,8 +37,18 @@ def is_ready(node: V1Node) -> bool:
     return any(c.type == "Ready" and c.status == "True" for c in conditions or [])
 
 
-def rejection_reason(node: V1Node) -> str | None:
-    """Return why `node` can't take a pod, or None if it can."""
+def matches_node_selector(pod: V1Pod, node: V1Node) -> bool:
+    """True if the node has every `key: value` label from the pod's nodeSelector.
+
+    Same rule as Kubernetes: all pairs must match exactly; an empty selector matches any node.
+    """
+    selector = (pod.spec.node_selector if pod.spec else None) or {}
+    labels = (node.metadata.labels if node.metadata else None) or {}
+    return all(labels.get(key) == value for key, value in selector.items())
+
+
+def rejection_reason(node: V1Node, pod: V1Pod) -> str | None:
+    """Return why `node` can't take `pod`, or None if it can."""
     if not is_ready(node):
         return "node(s) were not Ready"
     if node.spec and node.spec.unschedulable:
@@ -46,15 +56,17 @@ def rejection_reason(node: V1Node) -> str | None:
     for taint in (node.spec.taints if node.spec else None) or []:
         if taint.effect in BLOCKING_TAINT_EFFECTS:
             return f"node(s) had untolerated taint {{{taint.key}: {taint.effect}}}"
+    if not matches_node_selector(pod, node):
+        return "node(s) didn't match Pod's node affinity/selector"
     return None
 
 
-def filter_nodes(nodes: list[V1Node]) -> tuple[list[V1Node], list[Rejection]]:
-    """Split nodes into (feasible, rejected-with-reason)."""
+def filter_nodes(nodes: list[V1Node], pod: V1Pod) -> tuple[list[V1Node], list[Rejection]]:
+    """Split nodes into (feasible, rejected-with-reason) for this pod."""
     feasible: list[V1Node] = []
     rejected: list[Rejection] = []
     for node in nodes:
-        reason = rejection_reason(node)
+        reason = rejection_reason(node, pod)
         if reason is None:
             feasible.append(node)
         else:
