@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kairos-scheduler
+  namespace: kairos-system
+  labels:
+    app: kairos-scheduler
+spec:
+  # One replica until leader election lands (Phase 4). Recreate stops the old pod before
+  # starting the new one, so two schedulers never race for the same pods during a rollout.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: kairos-scheduler
+  template:
+    metadata:
+      labels:
+        app: kairos-scheduler
+    spec:
+      # No schedulerName: the default kube-scheduler places Kairos itself.
+      serviceAccountName: kairos-scheduler
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: kairos
+          image: kairos-scheduler:dev
+          imagePullPolicy: IfNotPresent  # image is side-loaded with `kind load`, never pulled
+          args: ["--log-level=INFO"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

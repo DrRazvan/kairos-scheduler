@@ -1,0 +1,42 @@
+# Least privilege: exactly the API calls scheduler.py makes, nothing more.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kairos-scheduler
+  namespace: kairos-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kairos-scheduler
+rules:
+  # list + watch unscheduled pods in every namespace
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  # the bind itself: the Python client's create_namespaced_binding POSTs to
+  # /api/v1/namespaces/{ns}/bindings, so RBAC sees resource "bindings" (not "pods/binding")
+  - apiGroups: [""]
+    resources: ["bindings"]
+    verbs: ["create"]
+  # read nodes to filter them
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  # Scheduled / FailedScheduling events (core/v1 Event)
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kairos-scheduler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kairos-scheduler
+subjects:
+  - kind: ServiceAccount
+    name: kairos-scheduler
+    namespace: kairos-system

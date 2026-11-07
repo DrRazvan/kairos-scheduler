@@ -129,7 +129,7 @@ class Scheduler:
         self._emit_event(ref, "Normal", "Scheduled", f"Successfully assigned {ref} to {target}")
 
     def _bind(self, ref: PodRef, target: str) -> None:
-        """POST /api/v1/namespaces/{ns}/pods/{name}/binding. This sets spec.nodeName."""
+        """POST /api/v1/namespaces/{ns}/bindings. This sets spec.nodeName."""
         body = client.V1Binding(
             # The uid guards against binding a *new* pod that reused the same name.
             metadata=client.V1ObjectMeta(name=ref.name, uid=ref.uid),

@@ -1,6 +1,7 @@
 CLUSTER := kairos
+IMAGE   := kairos-scheduler:dev
 
-.PHONY: install lint test run cluster-up cluster-down
+.PHONY: install lint test run cluster-up cluster-down image deploy undeploy logs
 
 install:        ## create venv and install dev deps
 	uv sync
@@ -19,3 +20,18 @@ cluster-up:     ## local multi-node kind cluster
 
 cluster-down:
 	kind delete cluster --name $(CLUSTER)
+
+image:          ## build the image and side-load it into the kind cluster
+	docker build -t $(IMAGE) .
+	kind load docker-image $(IMAGE) --name $(CLUSTER)
+
+deploy: image   ## run kairos as a pod in the cluster (restarts it to pick up the new image)
+	kubectl apply -k deploy/kairos
+	kubectl -n kairos-system rollout restart deployment/kairos-scheduler
+	kubectl -n kairos-system rollout status deployment/kairos-scheduler
+
+undeploy:
+	kubectl delete -k deploy/kairos --ignore-not-found
+
+logs:           ## follow the in-cluster scheduler's logs
+	kubectl -n kairos-system logs -f deployment/kairos-scheduler
